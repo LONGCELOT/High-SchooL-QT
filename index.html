@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="stores/VANN Seavlong LOGO.png">
+  <title>QT Attendance Tracker</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css" />
+  <link rel="stylesheet" href="stores/style.css">
+</head>
+<body>
+  <div class="form-container">
+    <section class="hero is-primary is-bold">
+      <div class="hero-body">
+        <div class="container">
+          <h1 class="title">QT Attendance Check</h1>
+        </div>
+      </div>
+    </section>
+    <form id="form" method="POST" enctype="multipart/form-data">
+      <div class="field">
+        <label class="label">Name</label>
+        <div class="control">
+          <input
+            class="input"
+            type="text"
+            placeholder="Enter your Name"
+            name="Name"
+            required
+          />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Attendance Status</label>
+        <div class="control">
+          <label class="radio">
+            <input type="radio" name="AttendanceStatus" value="Join" /> Join
+          </label>
+        </div>
+      </div>
+      <input type="hidden" name="Date" id="date-input" />
+      <div class="field is-grouped">
+        <div class="control">
+          <button class="button is-primary" type="submit" id="submit-button">
+            Submit
+          </button>
+        </div>
+        <div class="control">
+          <button class="button is-light-red" type="button" id="google-sheet-button">
+            View the Attendance
+          </button>
+        </div>
+      </div>
+    </form>
+    <div
+      id="message"
+      style="
+        display: none;
+        margin: 20px;
+        font-weight: bold;
+        color: green;
+        padding: 8px;
+        background-color: beige;
+        border-radius: 4px;
+        border-color: aquamarine;
+      "
+    ></div>
+  </div>
+
+  <script>
+    // Function to generate a UUID
+    function generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    // Set the current date to the hidden date input field
+    window.onload = function() {
+      var today = new Date().toISOString().split('T')[0];
+      document.getElementById('date-input').value = today;
+
+      // Generate and store a UUID if it doesn't exist
+      if (!localStorage.getItem('deviceUUID')) {
+        localStorage.setItem('deviceUUID', generateUUID());
+      }
+
+      // Check if the form was submitted today
+      var lastSubmissionDate = localStorage.getItem('lastSubmissionDate');
+      var lastSubmissionUUID = localStorage.getItem('lastSubmissionUUID');
+      if (lastSubmissionDate === today && lastSubmissionUUID === localStorage.getItem('deviceUUID')) {
+        document.getElementById("submit-button").disabled = true;
+        document.getElementById("message").textContent = "You have already submitted the form today.";
+        document.getElementById("message").style.display = "block";
+        document.getElementById("message").style.backgroundColor = "red";
+        document.getElementById("message").style.color = "white";
+      }
+    };
+
+    document.getElementById("form").addEventListener("submit", function (e) {
+      e.preventDefault(); // Prevent the default form submission
+
+      // Check if the current time is between 5:45 and 6:45 AM
+      var now = new Date();
+      var currentHour = now.getHours();
+      var currentMinutes = now.getMinutes();
+      if (
+        currentHour < 5 ||
+        (currentHour === 5 && currentMinutes < 45) ||
+        (currentHour === 6 && currentMinutes > 45) ||
+        currentHour > 6
+      ) {
+        document.getElementById("message").textContent = "Form can only be submitted between 5:45 and 6:45 AM.";
+        document.getElementById("message").style.display = "block";
+        document.getElementById("message").style.backgroundColor = "red";
+        document.getElementById("message").style.color = "white";
+        return; // Exit the function to prevent form submission
+      }
+
+      // Check if the form was submitted today
+      var today = new Date().toISOString().split('T')[0];
+      var lastSubmissionDate = localStorage.getItem('lastSubmissionDate');
+      var lastSubmissionUUID = localStorage.getItem('lastSubmissionUUID');
+      if (lastSubmissionDate === today && lastSubmissionUUID === localStorage.getItem('deviceUUID')) {
+        document.getElementById("message").textContent = "You have already submitted the form today.";
+        document.getElementById("message").style.display = "block";
+        document.getElementById("message").style.backgroundColor = "red";
+        document.getElementById("message").style.color = "white";
+        return;
+      }
+
+      // Save today's date and UUID to localStorage to prevent multiple submissions in one day
+      localStorage.setItem('lastSubmissionDate', today);
+      localStorage.setItem('lastSubmissionUUID', localStorage.getItem('deviceUUID'));
+
+      document.getElementById("message").textContent = "Submitting..";
+      document.getElementById("message").style.display = "block";
+      document.getElementById("submit-button").disabled = true;
+
+      // Collect the form data
+      var formData = new FormData(this);
+
+      // Convert form data to URLSearchParams format
+      var urlSearchParams = new URLSearchParams();
+      formData.forEach((value, key) => {
+        urlSearchParams.append(key, value);
+      });
+
+      // Send data to Google Sheets (without image)
+      fetch(
+        "https://script.google.com/macros/s/AKfycbzH6StYd1qGTadSC7PLK6rp4nWbjpEDM1LCIX8xVnrFRUboqwVjhI0Hd46wW6Hxw9JN/exec", // URL from google sheet App script
+        {
+          redirect: "follow",
+          method: "POST",
+          body: urlSearchParams.toString().replace(/\+/g, '%20'),
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+          },
+        }
+      )
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("Failed to submit the form.");
+          }
+          return response.text(); // Assuming your script returns a text response
+        })
+        .then(function (data) {
+          document.getElementById("message").textContent =
+            "Data submitted successfully!";
+          document.getElementById("message").style.display = "block";
+          document.getElementById("message").style.backgroundColor = "green";
+          document.getElementById("message").style.color = "beige";
+
+          document.getElementById("submit-button").disabled = false;
+          document.getElementById("form").reset();
+
+          setTimeout(function () {
+            document.getElementById("message").textContent = "";
+            document.getElementById("message").style.display = "none";
+          }, 2600);
+        })
+        .catch(function (error) {
+          console.error(error);
+          document.getElementById("message").textContent =
+            "An error occurred while submitting the form.";
+          document.getElementById("message").style.display = "block";
+        });
+    });
+
+    document.getElementById("google-sheet-button").addEventListener("click", function() {
+      window.open("https://docs.google.com/spreadsheets/d/1jeGDW9KuWky8tWdz-XrEsNNd2VJyPiemAzB7EEaqqL4/edit", "_blank");
+    });
+  </script>
+</body>
+</html>
