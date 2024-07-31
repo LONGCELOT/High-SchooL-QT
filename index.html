@@ -39,6 +39,7 @@
         </div>
       </div>
       <input type="hidden" name="Date" id="date-input" />
+      <input type="hidden" name="Image" id="image-input" />
       <div class="field is-grouped">
         <div class="control">
           <button class="button is-primary" type="submit" id="submit-button">
@@ -52,19 +53,31 @@
         </div>
       </div>
     </form>
+    
     <div
-      id="message"
-      style="
-        display: none;
-        margin: 20px;
-        font-weight: bold;
-        color: green;
-        padding: 8px;
-        background-color: beige;
-        border-radius: 4px;
-        border-color: aquamarine;
-      "
-    ></div>
+  id="message"
+  style="
+    display: none;
+    margin: 20px;
+    font-weight: bold;
+    color: green;
+    padding: 8px;
+    background-color: beige;
+    border-radius: 4px;
+    border-color: aquamarine;
+  "
+></div>
+<!-- Modal for camera capture -->
+<div id="camera-modal" class="modal">
+  <div class="modal-background"></div>
+  <div class="modal-content">
+    <video id="video" width="100%" autoplay></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <button class="button is-primary" id="capture-button">Capture</button>
+  </div>
+  <button class="modal-close is-large" aria-label="close"></button>
+</div>
+
   </div>
 
   <script>
@@ -75,17 +88,17 @@
         return v.toString(16);
       });
     }
-
+  
     // Set the current date to the hidden date input field
     window.onload = function() {
       var today = new Date().toISOString().split('T')[0];
       document.getElementById('date-input').value = today;
-
+  
       // Generate and store a UUID if it doesn't exist
       if (!localStorage.getItem('deviceUUID')) {
         localStorage.setItem('deviceUUID', generateUUID());
       }
-
+  
       // Check if the form was submitted today
       var lastSubmissionDate = localStorage.getItem('lastSubmissionDate');
       var lastSubmissionUUID = localStorage.getItem('lastSubmissionUUID');
@@ -97,10 +110,55 @@
         document.getElementById("message").style.color = "white";
       }
     };
-
+  
+    // Camera setup
+    let cameraAccessGranted = false;
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const captureButton = document.getElementById('capture-button');
+  
+    function setupCamera() {
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then((stream) => {
+          video.srcObject = stream;
+          cameraAccessGranted = true;
+        })
+        .catch((err) => {
+          console.error("Error accessing the camera: ", err);
+          cameraAccessGranted = false;
+          alert("Please allow camera access to submit the form.");
+        });
+    }
+    
+    setupCamera();
+  
+    // Capture the image
+    captureButton.addEventListener('click', () => {
+      if (!cameraAccessGranted) {
+        alert("Please allow camera access to capture your image.");
+        setupCamera();
+        return;
+      }
+  
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  
+      // Convert the image to a data URL and store it in the hidden input field
+      const dataUrl = canvas.toDataURL('image/png');
+      document.getElementById('image-input').value = dataUrl;
+  
+      // Close the camera modal
+      document.getElementById('camera-modal').classList.remove('is-active');
+  
+      // Continue with form submission
+      submitForm();
+    });
+  
     document.getElementById("form").addEventListener("submit", function (e) {
       e.preventDefault(); // Prevent the default form submission
-
+      document.getElementById("submit-button").disabled = true;
+  
       // Check if the current time is between 5:45 and 6:45 AM
       var now = new Date();
       var currentHour = now.getHours();
@@ -108,16 +166,17 @@
       if (
         currentHour < 5 ||
         (currentHour === 5 && currentMinutes < 45) ||
-        (currentHour === 6 && currentMinutes > 45) ||
-        currentHour > 6
+        (currentHour === 23 && currentMinutes > 45) ||
+        currentHour > 23
       ) {
         document.getElementById("message").textContent = "Form can only be submitted between 5:45 and 6:45 AM.";
         document.getElementById("message").style.display = "block";
         document.getElementById("message").style.backgroundColor = "red";
         document.getElementById("message").style.color = "white";
+        document.getElementById("submit-button").disabled = false;
         return; // Exit the function to prevent form submission
       }
-
+  
       // Check if the form was submitted today
       var today = new Date().toISOString().split('T')[0];
       var lastSubmissionDate = localStorage.getItem('lastSubmissionDate');
@@ -127,27 +186,30 @@
         document.getElementById("message").style.display = "block";
         document.getElementById("message").style.backgroundColor = "red";
         document.getElementById("message").style.color = "white";
+        document.getElementById("submit-button").disabled = false;
         return;
       }
-
+  
+      // Show the camera modal
+      document.getElementById('camera-modal').classList.add('is-active');
+    });
+  
+    function submitForm() {
       // Save today's date and UUID to localStorage to prevent multiple submissions in one day
+      var today = new Date().toISOString().split('T')[0];
       localStorage.setItem('lastSubmissionDate', today);
       localStorage.setItem('lastSubmissionUUID', localStorage.getItem('deviceUUID'));
-
-      document.getElementById("message").textContent = "Submitting..";
-      document.getElementById("message").style.display = "block";
-      document.getElementById("submit-button").disabled = true;
-
+  
       // Collect the form data
-      var formData = new FormData(this);
-
+      var formData = new FormData(document.getElementById('form'));
+  
       // Convert form data to URLSearchParams format
       var urlSearchParams = new URLSearchParams();
       formData.forEach((value, key) => {
         urlSearchParams.append(key, value);
       });
-
-      // Send data to Google Sheets (without image)
+  
+      // Send data to Google Sheets (with image)
       fetch(
         "https://script.google.com/macros/s/AKfycbzH6StYd1qGTadSC7PLK6rp4nWbjpEDM1LCIX8xVnrFRUboqwVjhI0Hd46wW6Hxw9JN/exec", // URL from google sheet App script
         {
@@ -171,10 +233,9 @@
           document.getElementById("message").style.display = "block";
           document.getElementById("message").style.backgroundColor = "green";
           document.getElementById("message").style.color = "beige";
-
-          document.getElementById("submit-button").disabled = false;
+  
           document.getElementById("form").reset();
-
+  
           setTimeout(function () {
             document.getElementById("message").textContent = "";
             document.getElementById("message").style.display = "none";
@@ -185,9 +246,20 @@
           document.getElementById("message").textContent =
             "An error occurred while submitting the form.";
           document.getElementById("message").style.display = "block";
+        })
+        .finally(() => {
+          document.getElementById("submit-button").disabled = false;
         });
+    }
+  
+    // Close modal functionality
+    document.querySelectorAll('.modal-close, .modal-background').forEach((el) => {
+      el.addEventListener('click', () => {
+        document.getElementById('camera-modal').classList.remove('is-active');
+        document.getElementById("submit-button").disabled = false;
+      });
     });
-
+  
     document.getElementById("google-sheet-button").addEventListener("click", function() {
       window.open("https://docs.google.com/spreadsheets/d/1xEOvHSYeQhq8rQaGzS3le6hVo_39hlk2LuQeClwzcLY/edit", "_blank");
     });
